@@ -4,185 +4,203 @@ import pandas as pd
 import numpy as np
 import google.generativeai as genai
 import matplotlib.pyplot as plt
+from scipy.stats import linregress
 
 # ==========================================
-# 1. CONFIGURACIÓN Y SEGURIDAD
+# 1. CONFIGURACIÓN Y ESTILO
 # ==========================================
-st.set_page_config(page_title="Actuarial Lab Pro", layout="wide")
+st.set_page_config(page_title="Master Trader AI", layout="wide")
 
-# Gestión de Claves (Nube vs Local)
+# CSS para estilo profesional
+st.markdown("""
+    <style>
+    .stApp { background-color: #0E1117; color: #FAFAFA; }
+    div.stButton > button { background-color: #0068C9; color: white; border-radius: 8px; font-weight: bold;}
+    </style>
+    """, unsafe_allow_html=True)
+
+# Gestión de Claves
 try:
     API_KEY = st.secrets["GEMINI_KEY"]
 except:
-    # 👇👇 PEGA TU CLAVE AQUÍ SI USAS EL PC 👇👇
     API_KEY = "PEGAR_TU_CLAVE_AQUI" 
 
-# Configuración de Gemini
 try:
     genai.configure(api_key=API_KEY)
     model = genai.GenerativeModel('gemini-flash-latest')
 except Exception as e:
-    st.error(f"Error configurando API: {e}")
+    st.error(f"Error API: {e}")
 
-st.title("🛡️ Laboratorio Actuarial: Riesgo y Proyecciones")
+st.title("📈 Master Trader: Simulación & Análisis Técnico")
 st.markdown("---")
 
 # ==========================================
-# 2. INPUTS (BARRA LATERAL)
+# 2. INPUTS
 # ==========================================
-st.sidebar.header("1. Configuración del Activo")
+st.sidebar.header("Configuración")
 acciones = ["GOOGL", "AAPL", "NVDA", "TSLA", "MELI", "YPF", "GGAL", "BTC-USD", "SPY"]
-ticker = st.sidebar.selectbox("Elige Activo:", acciones)
-if st.sidebar.checkbox("Escribir otro manual"):
-    ticker = st.sidebar.text_input("Ticker:", value="AMZN").upper()
-
-st.sidebar.header("2. Hipótesis Actuariales")
-dias_proyeccion = st.sidebar.slider("Horizonte (Días)", 30, 365, 30)
-num_simulaciones = st.sidebar.slider("N° Escenarios", 100, 1000, 200)
-
-st.sidebar.subheader("⚔️ Definición de Tendencia (Mu)")
-metodo_mu = st.sidebar.radio("¿Qué retorno base usar?", 
-                             ["Histórico (Lo que pasó)", "Hipótesis Manual (Lo que espero)"])
-
-mu_manual = 0.0
-if metodo_mu == "Hipótesis Manual (Lo que espero)":
-    mu_manual_pct = st.sidebar.number_input("Rendimiento Anual Esperado (%)", value=15.0, step=1.0)
-    mu_manual = mu_manual_pct / 100.0
+ticker = st.sidebar.selectbox("Activo:", acciones)
+dias_proyeccion = st.sidebar.slider("Días a Predecir", 30, 90, 30)
+num_simulaciones = st.sidebar.slider("Escenarios Monte Carlo", 50, 500, 200)
 
 # ==========================================
-# 3. FUNCIONES (CORE)
+# 3. FUNCIONES MATEMÁTICAS AVANZADAS
 # ==========================================
 def obtener_datos(simbolo):
-    """Descarga datos blindada contra errores de Yahoo"""
     try:
-        data = yf.download(simbolo, period="5y", interval="1d", progress=False, auto_adjust=True)
+        data = yf.download(simbolo, period="2y", interval="1d", progress=False, auto_adjust=True)
+        if data is None or data.empty: return None
         
-        # Si no bajó nada, retornamos None
-        if data is None or data.empty:
-            return None
-
-        # Fix para MultiIndex (Problema común de yfinance reciente)
+        # Limpieza de MultiIndex
         if isinstance(data.columns, pd.MultiIndex):
-            # Intentar buscar 'Close' en nivel 0 o 1
             if 'Close' in data.columns.get_level_values(0):
                 data = data.xs('Close', axis=1, level=0, drop_level=True)
             elif 'Close' in data.columns.get_level_values(1):
                 data = data.xs('Close', axis=1, level=1, drop_level=True)
-                
-        # Limpieza final
+        
         data = data.dropna()
-        
-        # Doble chequeo de vacío
-        if data.empty:
-            return None
-            
+        if data.empty: return None
+        # Asegurar nombre de columna
+        if len(data.columns) == 1: data.columns = [simbolo]
         return data
-    except Exception as e:
-        return None
+    except: return None
 
-def monte_carlo_flexible(precios, dias, simulaciones, usar_manual=False, mu_anual_manual=0.10):
-    # Validar que tengamos datos suficientes
-    if len(precios) < 2:
-        return None, 0, 0
-        
-    retornos_log = np.log(precios / precios.shift(1)).dropna()
-    sigma_diaria = retornos_log.std()
+def calcular_indicadores_tecnicos(df, ticker):
+    precios = df[ticker]
     
-    # Definir Drift (Tendencia)
-    if usar_manual:
-        # Convertir Tasa Anual a Diaria simple
-        mu_diaria = mu_anual_manual / 252 
-    else:
-        mu_diaria = retornos_log.mean()
+    # 1. RSI (14 días)
+    delta = precios.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    # 2. Medias Móviles (SMA)
+    sma_50 = precios.rolling(window=50).mean()
+    sma_200 = precios.rolling(window=200).mean()
+    
+    return rsi, sma_50, sma_200
 
+def proyeccion_con_ajuste(precios, dias, simulaciones):
+    # 1. AJUSTE HISTÓRICO (Regresión Log-Lineal)
+    # Calculamos la tendencia matemática que traía la acción
+    y_hist = np.log(precios.values)
+    x_hist = np.arange(len(y_hist))
+    slope, intercept, _, _, _ = linregress(x_hist, y_hist)
+    
+    # Línea de tendencia histórica (El "Ajuste del Modelo")
+    tendencia_historica = np.exp(intercept + slope * x_hist)
+    
+    # 2. SIMULACIÓN FUTURA (Monte Carlo basado en esa tendencia)
     ultimo_precio = precios.iloc[-1]
-    dt = 1
+    retornos_log = np.log(precios / precios.shift(1)).dropna()
+    volatilidad_diaria = retornos_log.std()
+    
+    # Usamos la pendiente histórica (slope) como el "Drift" (Tendencia)
+    # Esto hace que la proyección siga la inercia que traía la acción
+    mu_diaria = slope 
+    
     caminos = np.zeros((dias, simulaciones))
     caminos[0] = ultimo_precio
+    dt = 1
     
     for t in range(1, dias):
         Z = np.random.normal(0, 1, simulaciones)
-        # Fórmula Geométrica Browniana: Drift real = mu - 0.5*sigma^2
-        drift = (mu_diaria - 0.5 * sigma_diaria**2) * dt
-        shock = sigma_diaria * np.sqrt(dt) * Z
+        drift = (mu_diaria - 0.5 * volatilidad_diaria**2) * dt
+        shock = volatilidad_diaria * np.sqrt(dt) * Z
         caminos[t] = caminos[t-1] * np.exp(drift + shock)
         
-    return caminos, sigma_diaria * np.sqrt(252), mu_diaria * 252
+    return caminos, tendencia_historica, slope * 252, volatilidad_diaria * np.sqrt(252)
 
 # ==========================================
 # 4. EJECUCIÓN PRINCIPAL
 # ==========================================
-if st.button("🚀 Ejecutar Análisis"):
-    with st.spinner(f"Descargando y simulando {ticker}..."):
+if st.button("🚀 Ejecutar Análisis Completo"):
+    with st.spinner("Analizando mercado, ajustando modelos y consultando IA..."):
         
-        # 1. OBTENER DATOS (Con blindaje)
+        # A. Datos
         df = obtener_datos(ticker)
-        
-        # Si falló la descarga, avisamos y paramos.
-        if df is None or df.empty:
-            st.error(f"❌ No se pudieron descargar datos para '{ticker}'.")
-            st.warning("Posibles causas: Ticker incorrecto o Yahoo Finance está fallando temporalmente.")
-            st.stop()
+        if df is None:
+            st.error("Error descargando datos."); st.stop()
             
-        # Validar columnas
-        if ticker not in df.columns:
-            # Si solo hay una columna, asumimos que es esa
-            if len(df.columns) == 1:
-                df.columns = [ticker]
-            else:
-                st.error("Error de formato en los datos descargados.")
-                st.stop()
-
-        # 2. SIMULACIÓN
-        usar_manual = (metodo_mu == "Hipótesis Manual (Lo que espero)")
-        caminos, vol_anual, mu_usado = monte_carlo_flexible(
-            df[ticker], dias_proyeccion, num_simulaciones, 
-            usar_manual=usar_manual, mu_anual_manual=mu_manual
-        )
+        # B. Indicadores Técnicos
+        rsi_series, sma_50, sma_200 = calcular_indicadores_tecnicos(df, ticker)
         
-        if caminos is None:
-            st.error("Datos insuficientes para simular.")
-            st.stop()
-
+        # Últimos valores para la IA
         precio_actual = df[ticker].iloc[-1]
+        rsi_actual = rsi_series.iloc[-1]
+        val_sma50 = sma_50.iloc[-1]
+        val_sma200 = sma_200.iloc[-1]
+        
+        # Señales Técnicas
+        senal_medias = "Neutro"
+        if val_sma50 > val_sma200: senal_medias = "Alcista (Golden Cross)"
+        if val_sma50 < val_sma200: senal_medias = "Bajista (Death Cross)"
+        
+        estado_rsi = "Neutro"
+        if rsi_actual > 70: estado_rsi = "Sobrecompra (Posible corrección)"
+        if rsi_actual < 30: estado_rsi = "Sobreventa (Oportunidad)"
+
+        # C. Simulación y Ajuste
+        caminos, tendencia_hist, drift_anual, vol_anual = proyeccion_con_ajuste(df[ticker], dias_proyeccion, num_simulaciones)
         precio_esperado = caminos[-1].mean()
-        
-        # 3. MOSTRAR RESULTADOS
-        st.subheader(f"📊 Proyección a {dias_proyeccion} días")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Precio Actual", f"${precio_actual:.2f}")
-        c2.metric("Tendencia Base (Mu)", f"{mu_usado:.1%}", help="Retorno anual antes de volatilidad")
-        c3.metric("Volatilidad Anual", f"{vol_anual:.1%}", help="Riesgo medido como desviación estándar")
 
-        # Gráfico
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(caminos, color='gray', alpha=0.1)
-        ax.plot(caminos.mean(axis=1), color='blue', linewidth=2, label='Promedio Esperado')
-        ax.axhline(y=precio_actual, color='red', linestyle='--', label='Precio Hoy')
-        ax.set_title(f"Monte Carlo: {ticker}")
-        ax.legend()
+        # --- D. VISUALIZACIÓN AVANZADA ---
+        st.subheader("1. Ajuste del Modelo vs Realidad + Predicción")
+        
+        # Crear eje X continuo para unir pasado y futuro
+        dias_hist = len(df)
+        x_futuro = np.arange(dias_hist, dias_hist + dias_proyeccion)
+        
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        # 1. Pasado Real
+        ax.plot(np.arange(dias_hist), df[ticker], color='white', linewidth=2, label='Precio Real Histórico')
+        
+        # 2. Ajuste del Modelo (Tendencia Matemática)
+        ax.plot(np.arange(dias_hist), tendencia_hist, color='yellow', linestyle='--', alpha=0.7, label='Ajuste de Tendencia (Regresión)')
+        
+        # 3. Futuro (Simulación)
+        ax.plot(x_futuro, caminos.mean(axis=1), color='#00CC96', linewidth=3, label='Predicción Media (Monte Carlo)')
+        ax.fill_between(x_futuro, np.percentile(caminos, 5, axis=1), np.percentile(caminos, 95, axis=1), color='#00CC96', alpha=0.1, label='Rango de Probabilidad (95%)')
+        
+        ax.set_facecolor('#0E1117')
+        fig.patch.set_facecolor('#0E1117')
+        ax.tick_params(colors='white')
+        ax.xaxis.label.set_color('white')
+        ax.yaxis.label.set_color('white')
+        for spine in ax.spines.values(): spine.set_edgecolor('white')
+        
+        ax.legend(facecolor='#262730', labelcolor='white')
+        ax.set_title(f"Modelo Ajustado: {ticker}", color='white')
         st.pyplot(fig)
-        
-        # Nota Teórica
-        drift_real = mu_usado - 0.5 * (vol_anual**2)
-        if drift_real < 0:
-            st.warning(f"⚠️ Alerta Actuarial: Aunque esperas ganar {mu_usado:.1%}, la alta volatilidad ({vol_anual:.1%}) está destruyendo el valor compuesto. (Deriva real: {drift_real:.1%})")
-        else:
-            st.success(f"✅ Escenario favorable: La deriva compuesta es positiva ({drift_real:.1%}).")
 
-        # 4. INTELIGENCIA ARTIFICIAL
-        st.subheader("🤖 Análisis de Riesgos (IA)")
-        prompt = f"""
-        Actúa como consultor actuarial. Analiza:
-        - Activo: {ticker}
-        - Precio hoy: {precio_actual:.2f}
-        - Volatilidad: {vol_anual:.1%}
-        - Escenario proyectado (Media): {precio_esperado:.2f}
+        # --- E. ANÁLISIS TÉCNICO IA ---
+        st.subheader("2. Veredicto Técnico (IA)")
         
-        Dame una recomendación de gestión de riesgos en 3 líneas.
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("RSI (14)", f"{rsi_actual:.1f}")
+        col2.metric("SMA 50 vs 200", senal_medias)
+        col3.metric("Tendencia Anual", f"{drift_anual:.1%}")
+        col4.metric("Predicción (Media)", f"${precio_esperado:.2f}")
+
+        prompt = f"""
+        Eres un Analista Técnico Senior de Wall Street. Analiza {ticker} con estos datos técnicos precisos:
+        
+        DATOS TÉCNICOS:
+        1. Precio Actual: ${precio_actual:.2f}
+        2. RSI (14): {rsi_actual:.1f} -> {estado_rsi}
+        3. Medias Móviles: La SMA 50 está en ${val_sma50:.2f} y la SMA 200 en ${val_sma200:.2f}. Señal: {senal_medias}.
+        4. Proyección Matemática: El modelo Monte Carlo ajustado proyecta un precio de ${precio_esperado:.2f} en {dias_proyeccion} días.
+        
+        TU MISIÓN:
+        - Interpreta el cruce de medias (SMA) y el RSI. ¿Coinciden las señales?
+        - Compara la proyección matemática con el análisis técnico. ¿Tiene sentido la subida/bajada proyectada?
+        - Da una recomendación final de entrada/salida: (Compra Fuerte, Compra, Mantener, Venta).
         """
+        
         try:
             response = model.generate_content(prompt)
             st.info(response.text)
         except Exception as e:
-            st.warning(f"IA no disponible por cuota gratuita. (Cálculos matemáticos OK). Error: {e}")
+            st.warning("IA descansando (Cuota límite). Revisa los gráficos arriba.")
