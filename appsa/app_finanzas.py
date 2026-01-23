@@ -6,9 +6,8 @@ import google.generativeai as genai
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
 
-# ==========================================
 # 1. CONFIGURACIÓN Y ESTILO
-# ==========================================
+
 st.set_page_config(page_title="Actuary Trader AI", layout="wide")
 
 # CSS para estilo profesional
@@ -88,8 +87,7 @@ def calcular_indicadores_tecnicos(df, ticker):
 
 def proyeccion_con_ajuste(precios, dias, simulaciones):
     # 1. AJUSTE HISTÓRICO (Regresión Log-Lineal)
-    # Calculamos la tendencia matemática que traía la acción
-    y_hist = np.log(precios.values)
+    y_hist = np.log(precios.values)                     # Calculamos la tendencia matemática que traía la acción
     x_hist = np.arange(len(y_hist))
     slope, intercept, _, _, _ = linregress(x_hist, y_hist)
     
@@ -102,7 +100,6 @@ def proyeccion_con_ajuste(precios, dias, simulaciones):
     volatilidad_diaria = retornos_log.std()
     
     # Usamos la pendiente histórica (slope) como el "Drift" (Tendencia)
-    # Esto hace que la proyección siga la inercia que traía la acción
     mu_diaria = slope 
     
     caminos = np.zeros((dias, simulaciones))
@@ -117,9 +114,8 @@ def proyeccion_con_ajuste(precios, dias, simulaciones):
         
     return caminos, tendencia_historica, slope * 252, volatilidad_diaria * np.sqrt(252)
 
-# ==========================================
 # 4. EJECUCIÓN PRINCIPAL
-# ==========================================
+
 if st.button("🚀 Ejecutar Análisis Completo"):
     with st.spinner("Analizando mercado, ajustando modelos y consultando IA..."):
         
@@ -162,7 +158,7 @@ if st.button("🚀 Ejecutar Análisis Completo"):
         # 1. Pasado Real
         ax.plot(np.arange(dias_hist), df[ticker], color='white', linewidth=2, label='Precio Real Histórico')
         
-        # 2. Ajuste del Modelo (Tendencia Matemática)
+        # 2. Ajuste del Modelo 
         ax.plot(np.arange(dias_hist), tendencia_hist, color='yellow', linestyle='--', alpha=0.7, label='Ajuste de Tendencia (Regresión)')
         
         # 3. Futuro (Simulación)
@@ -209,4 +205,5 @@ if st.button("🚀 Ejecutar Análisis Completo"):
             st.info(response.text)
         except Exception as e:
             st.warning("IA descansando (Cuota límite). Revisa los gráficos arriba.")
+
 
