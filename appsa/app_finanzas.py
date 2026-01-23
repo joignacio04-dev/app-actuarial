@@ -9,7 +9,7 @@ from scipy.stats import linregress
 # ==========================================
 # 1. CONFIGURACIÓN Y ESTILO
 # ==========================================
-st.set_page_config(page_title="Master Trader AI", layout="wide")
+st.set_page_config(page_title="Actuary Trader AI", layout="wide")
 
 # CSS para estilo profesional
 st.markdown("""
@@ -31,21 +31,26 @@ try:
 except Exception as e:
     st.error(f"Error API: {e}")
 
-st.title("📈 Master Trader: Simulación & Análisis Técnico")
+st.title("📈 Actuary Trader: Simulación & Análisis Técnico")
 st.markdown("---")
 
-# ==========================================
+
 # 2. INPUTS
-# ==========================================
+
 st.sidebar.header("Configuración")
-acciones = ["GOOGL", "AAPL", "NVDA", "TSLA", "MELI", "YPF", "GGAL", "BTC-USD", "SPY"]
-ticker = st.sidebar.selectbox("Activo:", acciones)
+usar_manual = st.sidebar.checkbox("✍️ Escribir Ticker manualmente")
+
+if usar_manual:
+    ticker = st.sidebar.text_input("Escribe el Ticker (ej: AMZN, KO, DIS):", value="MSFT").upper()
+else:
+    acciones = ["GOOGL", "AAPL", "NVDA", "TSLA", "MELI", "YPF", "GGAL", "BTC-USD", "SPY"]
+    ticker = st.sidebar.selectbox("Elige un Activo:", acciones)
+
 dias_proyeccion = st.sidebar.slider("Días a Predecir", 30, 90, 30)
 num_simulaciones = st.sidebar.slider("Escenarios Monte Carlo", 50, 500, 200)
 
-# ==========================================
-# 3. FUNCIONES MATEMÁTICAS AVANZADAS
-# ==========================================
+# 3. FUNCIONES
+
 def obtener_datos(simbolo):
     try:
         data = yf.download(simbolo, period="2y", interval="1d", progress=False, auto_adjust=True)
@@ -204,3 +209,4 @@ if st.button("🚀 Ejecutar Análisis Completo"):
             st.info(response.text)
         except Exception as e:
             st.warning("IA descansando (Cuota límite). Revisa los gráficos arriba.")
+
